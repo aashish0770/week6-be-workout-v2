@@ -13,20 +13,26 @@ beforeAll(async () => {
   const result = await api
     .post("/api/user/signup")
     .send({ email: "mattiv@matti.fi", password: "R3g5T7#gh" });
+
   token = result.body.token;
 });
 
-describe("when there is initially some workouts saved", () => {
+describe("when there are workouts saved", () => {
+  let workoutId;
+
   beforeEach(async () => {
     await Workout.deleteMany({});
-    await api
+
+    const response = await api
       .post("/api/workouts")
       .set("Authorization", "bearer " + token)
       .send(workouts[0])
-      .send(workouts[1]);
+      .expect(201);
+
+    workoutId = response.body._id; // save ID for later tests
   });
 
-  test("Workouts are returned as json", async () => {
+  it("should return workouts as JSON", async () => {
     await api
       .get("/api/workouts")
       .set("Authorization", "bearer " + token)
@@ -34,17 +40,58 @@ describe("when there is initially some workouts saved", () => {
       .expect("Content-Type", /application\/json/);
   });
 
-  test("New workout added successfully", async () => {
-    const newWorkout = {
-      title: "testworkout",
-      reps: 10,
-      load: 100,
-    };
+  it("should add a new workout successfully", async () => {
+    const newWorkout = { title: "testworkout", reps: 10, load: 100 };
+
     await api
       .post("/api/workouts")
       .set("Authorization", "bearer " + token)
       .send(newWorkout)
       .expect(201);
+
+    const response = await api
+      .get("/api/workouts")
+      .set("Authorization", "bearer " + token);
+
+    expect(response.body).toHaveLength(2); // one from beforeEach + new one
+  });
+
+  it("should fetch a single workout by ID", async () => {
+    const response = await api
+      .get(`/api/workouts/${workoutId}`)
+      .set("Authorization", "bearer " + token)
+      .expect(200)
+      .expect("Content-Type", /application\/json/);
+
+    expect(response.body._id).toBe(workoutId);
+    expect(response.body.title).toBe(workouts[0].title);
+  });
+
+  it("should update a workout successfully", async () => {
+    const updatedWorkout = { title: "Updated workout", reps: 20, load: 200 };
+
+    const response = await api
+      .patch(`/api/workouts/${workoutId}`)
+      .set("Authorization", "bearer " + token)
+      .send(updatedWorkout)
+      .expect(200);
+
+    expect(response.body.title).toBe("Updated workout");
+    expect(response.body.reps).toBe(20);
+    expect(response.body.load).toBe(200);
+  });
+
+  it("should delete a workout successfully", async () => {
+    await api
+      .delete(`/api/workouts/${workoutId}`)
+      .set("Authorization", "bearer " + token)
+      .expect(200);
+
+    const workoutsAtEnd = await api
+      .get("/api/workouts")
+      .set("Authorization", "bearer " + token);
+
+    expect(workoutsAtEnd.body).toHaveLength(0);
   });
 });
 
